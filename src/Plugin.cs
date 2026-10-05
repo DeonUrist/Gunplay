@@ -15,7 +15,7 @@ namespace Gunplay
     {
         public const string GUID = "com.denis.apocalypter.gunplay";
         public const string NAME = "Gunplay";
-        public const string VERSION = "1.0.0";
+        public const string VERSION = "1.0.1";
         internal static ManualLogSource Log;
         internal static string Dir;
         internal static ConfigEntry<Color> BoltColor;

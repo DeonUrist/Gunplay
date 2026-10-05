@@ -189,7 +189,7 @@ namespace Gunplay
             _counts.Clear();
             _rangedHit = null; _metalImpact = null; _effectsLooked = false;
             _carRoots.Clear();
-            _isPart.Clear(); _headMul.Clear(); _health.Clear();
+            _isPart.Clear(); _headMul.Clear(); _health.Clear(); _creature.Clear();
             _reported.Clear();
             _guns.Clear();
             _notGun.Clear();
@@ -382,7 +382,7 @@ namespace Gunplay
         private static bool IsCorpse(GameObject go)
         {
             if (go == null || IsPlayerObj(go)) return false;
-            if (!HasBodypart(go) && !HasBodypart(go.transform.root.gameObject)) return false;
+            if (!HasBodypart(go) && !HasBodypart(RootOf(go.transform).gameObject)) return false;
             return float.IsNaN(HealthOf(go));
         }
 
@@ -397,7 +397,7 @@ namespace Gunplay
         private static void ReportHitbox(Collider head)
         {
             if (!Plugin.VerboseLog.Value) return;
-            var root = head.transform.root;
+            var root = RootOf(head.transform);
             string name = root.name; int cut = name.IndexOf('('); if (cut > 0) name = name.Substring(0, cut);
             if (!_reported.Add(name)) return;
             try
@@ -435,7 +435,7 @@ namespace Gunplay
             // vehicle parts carry a Bodypart FSM too (their condition): not a creature - no hurt ghost, no white/red number (the part rule shows blue)
             bool isPart = OwningPart(go.transform) != null || go.CompareTag("vehPartRemoved") || IsVehiclePart(go);   // the same test HitWorld uses (a vehPart-tagged ancestor)
             bool corpse = !isPart && IsCorpse(go);                // (1.5.2) a dead NPC's ragdoll: blood, but no number / marker / hurt
-            bool creature = !isPart && !corpse && (HasBodypart(go) || HasBodypart(go.transform.root.gameObject));
+            bool creature = !isPart && !corpse && (HasBodypart(go) || HasBodypart(RootOf(go.transform).gameObject));
             if (creature) Integration.Hurt(go, s.Player);
             bool feedback = creature;
             float before = Plugin.HitLog.Value || feedback ? HealthOf(go) : 0f;
@@ -448,11 +448,11 @@ namespace Gunplay
                 float nominal = gun.Damage != null ? gun.Damage.Value * falloff : 0f;
                 float dealt = !float.IsNaN(before) && !float.IsNaN(after) && after < before ? after - before : nominal;
                 bool head = col_isHead(go);
-                Integration.PlayerHit(go.transform.root.gameObject, h.point, dealt, head);
+                Integration.PlayerHit(RootOf(go.transform).gameObject, h.point, dealt, head);
             }
             if (Plugin.HitLog.Value)
             {
-                Plugin.Log.LogInfo("Hit: " + fsm.GameObject.name + " -> " + go.transform.root.name + "/" + go.name + " at " + (s.Travelled + h.distance).ToString("0.0") + " m, damage "
+                Plugin.Log.LogInfo("Hit: " + fsm.GameObject.name + " -> " + RootOf(go.transform).name + "/" + go.name + " at " + (s.Travelled + h.distance).ToString("0.0") + " m, damage "
                     + (gun.Damage != null ? gun.Damage.Value * falloff : 0f).ToString("0.0") + " (x" + falloff.ToString("0.00") + ")"
                     + (float.IsNaN(before) ? ", no Health FSM" : ", Health " + before.ToString("0.0") + " -> " + after.ToString("0.0")));
             }
@@ -685,7 +685,7 @@ namespace Gunplay
         private static float HealthOf(GameObject go)
         {
             if (go == null) return float.NaN;
-            var root = go.transform.root.gameObject;
+            var root = RootOf(go.transform).gameObject;
             int id = root.GetInstanceID();
             HealthRef hr;
             if (_health.TryGetValue(id, out hr) && hr.Root == root) return hr.Var != null ? hr.Var.Value : float.NaN;
@@ -1073,7 +1073,7 @@ namespace Gunplay
             foreach (var kv in _health) if (kv.Value.Root == null) _dead.Add(kv.Key);
             foreach (var k in _dead) _health.Remove(k);
             // instance-id keyed yes/no caches: cheap to rebuild, so they are simply emptied every sweep instead of growing all session
-            _counts.Clear(); _isPart.Clear(); _headMul.Clear(); _carRoots.Clear(); _isMelee.Clear();
+            _counts.Clear(); _isPart.Clear(); _headMul.Clear(); _carRoots.Clear(); _isMelee.Clear(); _creature.Clear();
             _forceFree.RemoveWhere(g => g == null);
         }
 
@@ -1283,7 +1283,7 @@ namespace Gunplay
             foreach (var f in fsms) if (s.EventFsm == null || f.FsmName == s.EventFsm) f.SendEvent(s.EventName);
             Integration.Hurt(target, s.ShooterRoot);
             if (Plugin.HitLog.Value)
-                Plugin.Log.LogInfo("Hit: " + (s.ShooterRoot != null ? s.ShooterRoot.name : "?") + " -> " + target.transform.root.name + "/" + target.name + " at "
+                Plugin.Log.LogInfo("Hit: " + (s.ShooterRoot != null ? s.ShooterRoot.name : "?") + " -> " + RootOf(target.transform).name + "/" + target.name + " at "
                     + dist.ToString("0.0") + " m, damage " + damage.ToString("0.0")
                     + (float.IsNaN(before) ? "" : ", Health " + before.ToString("0.0") + " -> " + HealthOf(target).ToString("0.0")));
         }
@@ -1348,6 +1348,7 @@ namespace Gunplay
         private static readonly Dictionary<int, bool> _carRoots = new Dictionary<int, bool>();
         private static bool IsCarMetal(Transform t)
         {
+            if (Creature(t) != null) return false;          // (1.0.1) a creature riding in a car (Apocapatrol crews): flesh, not metal
             bool onCar = false;
             for (var p = t; p != null; p = p.parent)
             {
@@ -1488,8 +1489,47 @@ namespace Gunplay
             return false;
         }
 
+        // (1.0.1) The creature a collider belongs to. Apocapatrol seats its crews under the car (sitPos / Apocapatrol.PassengerPos), so
+        // transform.root of a driver's collider is the car, not the NPC: the car's VehicleController made the driver "car metal" (sparks),
+        // and HealthOf / the HUD target / HitLog read the car instead of the person. Walks up from the collider, never past a vehicle part
+        // (tag vehPart / vehPartRemoved) or a car root (VehicleController): the first object with a Health FSM is the creature (NPC root);
+        // without one (a ragdoll corpse, the player's parts) the highest object with a Bodypart FSM or on the NPC layer (10). null = not a creature.
+        private sealed class CreatureRef { public Transform From; public Transform Root; public bool Found; }
+        private static readonly Dictionary<int, CreatureRef> _creature = new Dictionary<int, CreatureRef>();
+        private static Transform Creature(Transform t)
+        {
+            if (t == null) return null;
+            int id = t.GetInstanceID();
+            CreatureRef cr;
+            if (_creature.TryGetValue(id, out cr) && cr.From == t && (cr.Root == null ? !cr.Found : true)) return cr.Root;
+            Transform health = null, body = null;
+            for (var p = t; p != null; p = p.parent)
+            {
+                if (p.CompareTag("vehPart") || p.CompareTag("vehPartRemoved") || p.GetComponent("VehicleController") != null) break;
+                bool bp = false, hp = false;
+                foreach (var f in p.GetComponents<PlayMakerFSM>())
+                {
+                    if (f == null) continue;
+                    if (f.FsmName == "Health") hp = true;
+                    else if (f.FsmName == "Bodypart") bp = true;
+                }
+                if (hp) { health = p; break; }
+                if (bp || p.gameObject.layer == 10) body = p;
+            }
+            var root = health != null ? health : body;
+            _creature[id] = new CreatureRef { From = t, Root = root, Found = root != null };
+            return root;
+        }
+        // the creature's root when the collider is part of one, else the hierarchy root as before
+        private static Transform RootOf(Transform t)
+        {
+            var c = Creature(t);
+            return c != null ? c : t.root;
+        }
+
         private static Transform OwningPart(Transform t)
         {
+            if (Creature(t) != null) return null;           // (1.0.1) a creature seated under a car part is never the part
             for (; t != null; t = t.parent) if (t.CompareTag("vehPart")) return t;
             return null;
         }
