@@ -22,7 +22,7 @@ namespace Gunplay
     // Cost: projectiles are structs in one list; each one costs one short RaycastNonAlloc per frame (the distance it moved); all lines
     // are one camera-facing mesh = one draw call with an unlit material (Sprites/Default: no lighting, same look day and night).
     // Above [Tracers] MaxTracers live projectiles a shot is resolved at once (hitscan) instead, so no damage is ever lost.
-    internal static class Tracers
+    internal static partial class Tracers
     {
         internal enum Kind { Pistol, Smg, Rifle, Sniper, Shotgun, Crossbow }
 
@@ -42,6 +42,7 @@ namespace Gunplay
             public Kind Kind;                // (1.5.0) the gun type: how well it penetrates car parts
             public float DmgMult;            // damage left after the car parts it went through (1 = none)
             public int Passed, Passed0, Passed1;   // car parts gone through (at most 2) and their instance ids
+            public bool Orb;                 // (1.1.0) a monster's projectile (Orbs.cs): penetrates like a pistol bullet
         }
 
         // A first-person gun under PlayerCamera/WeaponsArm/Parent/<gun>: its Attack FSM, the Raycast it fires and the states that
@@ -196,6 +197,7 @@ namespace Gunplay
             _heads.Clear();
             _player = null;
             _playerTracked = false;
+            _orbs.Clear();
             _pushes.Clear();
             _popped.Clear(); _forceFree.Clear(); _meleeWheels.Clear(); _isMelee.Clear(); _corpseHitAt.Clear();
         }
@@ -1075,6 +1077,7 @@ namespace Gunplay
             // instance-id keyed yes/no caches: cheap to rebuild, so they are simply emptied every sweep instead of growing all session
             _counts.Clear(); _isPart.Clear(); _headMul.Clear(); _carRoots.Clear(); _isMelee.Clear(); _creature.Clear();
             _forceFree.RemoveWhere(g => g == null);
+            SweepOrbs();
         }
 
         private static void Step(ref Shot s, float dt)
@@ -1448,7 +1451,7 @@ namespace Gunplay
             int id = part.GetInstanceID();
             if (s.Passed == 0) s.Passed0 = id; else s.Passed1 = id;
             s.Passed++;
-            if (Plugin.HitLog.Value) Plugin.Log.LogInfo("Hit: " + s.Kind + " bullet goes through " + part.name + " (" + m + "), damage x" + s.DmgMult.ToString("0.00"));
+            if (Plugin.HitLog.Value) Plugin.Log.LogInfo("Hit: " + (s.Orb ? "monster orb" : s.Kind + " bullet") + " goes through " + part.name + " (" + m + "), damage x" + s.DmgMult.ToString("0.00"));
             return true;
         }
 

@@ -15,7 +15,7 @@ namespace Gunplay
     {
         public const string GUID = "com.denis.apocalypter.gunplay";
         public const string NAME = "Gunplay";
-        public const string VERSION = "1.0.1";
+        public const string VERSION = "1.1.0";
         internal static ManualLogSource Log;
         internal static string Dir;
         internal static ConfigEntry<Color> BoltColor;
@@ -37,6 +37,7 @@ namespace Gunplay
         internal static ConfigEntry<bool> MetalSparks;
         internal static ConfigEntry<float> MetalSparksScale;
         internal static ConfigEntry<bool> NpcAimAtBody;
+        internal static ConfigEntry<bool> OrbsHitWalls;
         internal static ConfigEntry<float> NpcHitRadius;
         internal static ConfigEntry<float> NpcShotgunDamage;
         internal static ConfigEntry<float> PistolRange;
@@ -112,6 +113,8 @@ namespace Gunplay
             NpcShotgunDamage = H("Tracers", "NpcShotgunDamage", 1.7f, new ConfigDescription(
                 "Damage multiplier for NPC shotgun pellets (the game's shotgunners do 5-8 per ray x 4 rays per blast, a third of a rifle burst).",
                 new AcceptableValueRange<float>(0f, 5f)));
+            OrbsHitWalls = Config.Bind("Gunplay", "MonsterProjectilesHitWalls", true,
+                "Projectiles of monsters without guns (Arachnid, Teacher and the like) are stopped by walls, terrain and vehicles; car glass, grids, doors and plates let them through as often as a pistol bullet. Off = the game's own projectiles, which fly through everything.");
             PistolRange = Config.Bind("Tracers", "PistolRange", 60f, new ConfigDescription("Pistols/revolvers: damage falls off linearly with distance - half at 50 % of this range, the bullet is gone at 100 %. Metres.", new AcceptableValueRange<float>(5f, 1000f)));
             PlayerBodyRadius = H("Tracers", "PlayerBodyRadius", 0.22f, new ConfigDescription(
                 "Your body as NPC bullets see it: a capsule from your feet to your neck with this radius, m (the game's own collider is only 0.17-0.20).",
@@ -150,6 +153,7 @@ namespace Gunplay
             Patch(typeof(GetLayer), "OnEnter", typeof(Tracers), nameof(Tracers.AfterGetLayer), false);
             Patch(typeof(SetAudioClip), "OnEnter", typeof(Tracers), nameof(Tracers.AfterSetAudioClip), false);
             Patch(typeof(CreateObject), "OnEnter", typeof(Plugin), nameof(AfterCreateObject), false);
+            Patch(typeof(TranslatePosition), "OnFixedUpdate", typeof(Tracers), nameof(Tracers.BeforeTranslatePosition), true);
             SceneManager.sceneLoaded += OnSceneLoaded;
             OnSceneLoaded(default(Scene), default(LoadSceneMode));
             Log.LogInfo(NAME + " loaded; sibling integrations are optional.");
@@ -167,6 +171,7 @@ namespace Gunplay
             if (__instance.storeObject == null || __instance.gameObject == null) return;
             var prefab = __instance.gameObject.Value;
             if (prefab != null) Bosses.Spawned(__instance.storeObject.Value, prefab.name);
+            Tracers.OrbSpawned(__instance, __instance.storeObject.Value);
         }
         private static void OnSceneLoaded(Scene scene, LoadSceneMode mode) { EnsureRunner(); Tracers.OnSceneLoaded(); Bosses.OnSceneLoaded(); }
         private static void EnsureRunner()
