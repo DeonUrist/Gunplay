@@ -4,9 +4,13 @@ Independent BepInEx 5 mod for Apocalypter, extracted from Apocaraider 1.7.0. Plu
 
 Gunplay owns NPC and player projectile simulation, glowing tracers/crossbow bolts, travel time, weapon range and distance damage falloff, headshot adjustment, shotgun pellets, vehicle damage and penetration, wheel damage/detachment, corpse hit blood/stab audio, and human boss health adjustment. NPCAI owns NPC combat decisions and perception; GunplayHUD owns hit feedback. Both integrations are optional.
 
-Gunplay 1.2.0 also includes Apocaunloader's ammo features: hold Reload to unload the current gun, preserve overflow when
+Gunplay also includes Apocaunloader's ammo features: hold Reload to unload the current gun, preserve overflow when
 changing/removing backpacks, and keep independent magazines and hammer/chamber state for identical guns. Overflow becomes
 a save-registered ammo item; a failed spawn retains the rounds and retries. Backpack reserve ammo stays shared by caliber.
+
+Gunplay 1.3.0 returns one armor plate for each full 50 points of excess armor when switching to lower-capacity body armor.
+For example, 250 armor reduced to a 100-capacity vest drops three plates. Excess below 50 creates no plate and is clamped
+normally. Failed drops retain the armor and retry. Returned plates are registered with the game's item-saving system.
 
 Existing `Apocaunloader.Magazines` save data is used unchanged, so switching from Apocaunloader 1.3.0 preserves each gun's
 rounds. A save without that data assigns the old type's loaded rounds to the first gun drawn of that type; other copies
@@ -28,10 +32,13 @@ Config: `BepInEx/config/com.denis.apocalypter.gunplay.cfg`, section `[Ammo]`.
 | `AnimationTimeout` | `4` | Timeout for each unload animation phase |
 | `FallbackKey` | `R` | Used if the Reload input axis is unavailable |
 | `DropBackpackOverflow` | `true` | Drop excess ammo on backpack capacity reductions; retry failed drops |
+| `DropArmorOverflow` | `true` | Drop one plate per full 50 excess armor on armor capacity reductions; retry failed drops |
+
+The Ammo section appears above Debug, with Drop armor overflow immediately after Drop backpack overflow.
 
 Per-gun magazine tracking remains active while Gunplay is installed, including when unloading or projectile simulation is
-disabled, to preserve loaded rounds. `EnableGunplay` continues to control bullet simulation; unloading and backpack
-overflow have their own switches. Ammo logs use Gunplay's existing `VerboseLog` setting.
+disabled, to preserve loaded rounds. `EnableGunplay` continues to control bullet simulation; unloading, backpack overflow,
+and armor overflow have their own switches. Ammo logs use Gunplay's existing `VerboseLog` setting.
 
 ## Verification
 
@@ -42,5 +49,6 @@ The native harness redirects saves into `verification/output` and does not load 
 
 ## Changes
 
+- 1.3.0: Armor capacity reductions return one plate per full 50 excess armor. Ammo settings appear above Debug, with the new armor overflow switch directly after ammo overflow.
 - 1.2.0: Unloading, backpack overflow protection and independent per-gun magazines integrated from Apocaunloader. Existing saves/settings carry over; duplicate standalone hooks are suppressed.
 - 1.1.0: Monster projectiles (Arachnid, Teacher and other gunless ranged attackers) no longer fly through walls. They stop at terrain, walls, items, doors and vehicles, and pass car glass, grids, doors and plates as often as a pistol bullet, damaging the part. Setting: `[Gunplay] MonsterProjectilesHitWalls` (default on).

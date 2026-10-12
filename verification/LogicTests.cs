@@ -53,6 +53,7 @@ internal static class LogicTests
             }
         Check(true, "15,251 count/capacity combinations conserve ammo and respect capacity");
         MagazineTests.Run(Check);
+        ArmorTests.Run(Check);
         Console.WriteLine(checks + " checks passed");
     }
 }

@@ -100,6 +100,7 @@ namespace Gunplay.Ammo
             _saveFsm = fsm.FsmComponent;
             if (state == "Start" || state == "setSeed" || state == "LoadGame")
             {
+                ArmorOverflow.Reset();
                 AmmoRunner.Unloader.CancelForLoad();
                 _ledger = new MagazineLedger(); Release();
                 _loading = true; _saving = false; _faulted = false; _snapshot = null; _saveFile = null;

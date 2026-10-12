@@ -48,6 +48,7 @@ internal static class NativeMagazineChecks
     static void Check(bool pass, string message)
     { if (!pass) throw new Exception(message); Report.Add("PASS: " + message); File.WriteAllLines(Path.Combine(MagazineProbe.Root, "report.txt"), Report); }
     static FsmInt Int(string name, int value) { var v = new FsmInt { Value = value }; v.SetName(name); return v; }
+    static FsmFloat Float(string name, float value) { var v = new FsmFloat { Value = value }; v.SetName(name); return v; }
     static FsmBool Bool(string name, bool value) { var v = new FsmBool { Value = value }; v.SetName(name); return v; }
     static FsmString Str(string name, string value) { var v = new FsmString { Value = value }; v.SetName(name); return v; }
     static FsmGameObject Obj(string name, GameObject value) { var v = new FsmGameObject { Value = value }; v.SetName(name); return v; }
@@ -108,10 +109,12 @@ internal static class NativeMagazineChecks
         bool legacyLoaded = AppDomain.CurrentDomain.GetAssemblies().Any(s => s.GetType("Apocaunloader.Runner", false) != null);
         Check(AmmoSettings.Active && AmmoSettings.LegacySuppressed == legacyLoaded, "Gunplay owns ammo with or without standalone Unloader installed");
         Check(!Harmony.GetAllPatchedMethods().Any(m => Harmony.GetPatchInfo(m).Owners.Contains(AmmoSettings.LegacyGuid)), "Standalone ammo action hooks cannot process the same ammo twice");
+        UnityEngine.SceneManagement.SceneManager.SetActiveScene(UnityEngine.SceneManagement.SceneManager.CreateScene("Gunplay verification"));
         var gm = new GameObject("__GameManager__"); var ammo = Fsm(gm, "Ammo", "idle");
         ammo.FsmVariables.IntVariables = new[] { Int("ammo_762", 100), Int("ammo_762_capacity", 500) }; ammo.FsmVariables.Reinitialize();
         main = Fsm(new GameObject("SaveLoadGame"), "SaveLoadGame", "isPlay", "wait", "SaveGame", "LoadGame");
         Action(main, "SaveGame", new ES3PlayMaker.SaveAll { key = "global", saveFsmVariables = true, saveGlobalVariables = false });
+        ArmorChecks(gm);
         var arm = new GameObject("WeaponsArm").transform;
         akms = Model(arm, "akms", 30, false); redmark = Model(arm, "redmark_m11", 4, true);
         handler = Fsm(new GameObject("Weapons"), "WeaponInHand", "off", "Deactivate", "akms", "redmark_m11");
@@ -182,6 +185,57 @@ internal static class NativeMagazineChecks
         ES3.Save<ES3PlayMaker.PMDataWrapper>("global", new ES3PlayMaker.PMDataWrapper(main.Fsm, true, false), Cache("SaveGame3.es3"));
         ES3.StoreCachedFile(Disk("SaveGame3.es3")); Load("SaveGame3.es3");
         Check(PerGunAmmo.Suspended && ES3.Load<string>(PerGunAmmo.SaveKey, Disk("SaveGame3.es3")) == "corrupt", "Corrupt metadata suspends overrides and preserves original save data");
-        Check(Harmony.GetAllPatchedMethods().Count(m => Harmony.GetPatchInfo(m).Owners.Contains(Plugin.GUID)) == 16, "All sixteen production Harmony patches install on shipped game assemblies");
+        Check(Harmony.GetAllPatchedMethods().Count(m => Harmony.GetPatchInfo(m).Owners.Contains(Plugin.GUID)) == 17, "All seventeen production Harmony patches install on shipped game assemblies");
+    }
+
+    static void ArmorChecks(GameObject gm)
+    {
+        var config = BepInEx.Bootstrap.Chainloader.PluginInfos[Plugin.GUID].Instance.Config;
+        var keys = config.Keys.ToArray();
+        int ammoSection = Array.FindIndex(keys, k => k.Section == "Ammo"), debugSection = Array.FindIndex(keys, k => k.Section == "Debug");
+        int ammoOverflow = Array.FindIndex(keys, k => k.Section == "Ammo" && k.Key == "DropBackpackOverflow");
+        int armorOverflow = Array.FindIndex(keys, k => k.Section == "Ammo" && k.Key == "DropArmorOverflow");
+        Check(ammoSection >= 0 && ammoSection < debugSection && armorOverflow == ammoOverflow + 1 && AmmoSettings.DropArmorOverflow.Value,
+            "Ammo is registered above Debug with enabled armor overflow directly after ammo overflow");
+        var armor = Fsm(gm, "ArmorBackpack", "armor_backpack");
+        armor.FsmVariables.FloatVariables = new[] { Float("armor", 250), Float("armor_capacity", 300) }; armor.FsmVariables.Reinitialize();
+        var count = armor.FsmVariables.GetFsmFloat("armor"); var cap = armor.FsmVariables.GetFsmFloat("armor_capacity");
+        var clamp = new FloatClamp { floatVariable = count, minValue = 0, maxValue = cap, everyFrame = true };
+        Action(armor, "armor_backpack", clamp); clamp.OnUpdate();
+        Check(count.Value == 250, "Initial armor observation establishes baseline without spawning plates");
+        var slot = Fsm(new GameObject("Armor_Item"), "SlotEmptyFull", "empty", "full");
+        Action(slot, "full", new SetFsmFloat { gameObject = new FsmOwnerDefault { OwnerOption = OwnerDefaultOption.SpecifyGameObject, GameObject = gm },
+            fsmName = "ArmorBackpack", variableName = "armor_capacity", setValue = 100, everyFrame = false });
+        slot.Fsm.SetState("full"); clamp.OnUpdate();
+        Check(cap.Value == 100 && count.Value == 250, "Native smaller-armor equip retains overflow when plate spawning is unavailable");
+        var template = new GameObject("armorplate(Clone)900");
+        var id = Fsm(template, "ID", "off"); id.FsmVariables.StringVariables = new[] { Str("ID", "armorplate") }; id.FsmVariables.Reinitialize();
+        var quantity = Fsm(template, "Quantity", "off"); quantity.FsmVariables.IntVariables = new[] { Int("Quantity", 99) }; quantity.FsmVariables.Reinitialize();
+        template.AddComponent<BoxCollider>().isTrigger = true;
+        var body = template.AddComponent<Rigidbody>(); body.isKinematic = true; body.useGravity = false;
+        template.SetActive(false);
+        var counter = Fsm(new GameObject("itemNameID"), "itemNameID", "off"); counter.FsmVariables.IntVariables = new[] { Int("intName", 1000) }; counter.FsmVariables.Reinitialize();
+        var list = new GameObject("NewGO_ArrayList").AddComponent<PlayMakerArrayListProxy>(); list.referenceName = "ArrayList_Items";
+        cap.Value = 99; clamp.OnUpdate();
+        Check(count.Value == 99 && list.arrayList.Count == 3, "Native armor clamp drops three save-registered plates after a further downgrade");
+        var plates = list.arrayList.Cast<GameObject>().ToArray();
+        Check(plates.Select(p => p.name).Distinct().Count() == 3 && plates.All(p => p.name.StartsWith("armorplate(Clone)") && p.activeInHierarchy
+            && p.transform.parent == null && p.layer == 9 && !p.GetComponent<Rigidbody>().isKinematic && p.GetComponent<Rigidbody>().useGravity
+            && p.GetComponent<Collider>().enabled && !p.GetComponent<Collider>().isTrigger
+            && PerGunAmmo.Find(p, "Quantity").FsmVariables.GetFsmInt("Quantity").Value == 1),
+            "Returned armor plates are distinct, collectible single items with restored world physics");
+        clamp.OnUpdate(); Check(list.arrayList.Count == 3, "Repeated native clamp cannot duplicate returned armor plates");
+        cap.Value = 200; count.Value = 149.999f; clamp.OnUpdate(); cap.Value = 100; clamp.OnUpdate();
+        Check(count.Value == 100 && list.arrayList.Count == 3, "49.999 excess armor creates no plate");
+        cap.Value = 200; count.Value = 150; clamp.OnUpdate(); cap.Value = 100; clamp.OnUpdate();
+        Check(count.Value == 100 && list.arrayList.Count == 4, "Exactly 50 excess armor creates one plate");
+        cap.Value = 200; count.Value = 80; clamp.OnUpdate(); cap.Value = 100; clamp.OnUpdate();
+        Check(count.Value == 80 && list.arrayList.Count == 4, "Armor downgrade within current protection creates no plate");
+        AmmoSettings.DropArmorOverflow.Value = false; count.Value = 250; cap.Value = 50; clamp.OnUpdate();
+        Check(count.Value == 50 && list.arrayList.Count == 4, "Disabling armor overflow restores native clamping without affecting ammo settings");
+        AmmoSettings.DropArmorOverflow.Value = true; ArmorOverflow.Reset();
+        cap.Value = 300; count.Value = 250; clamp.OnUpdate();
+        main.Fsm.SetState("LoadGame"); cap.Value = 100; clamp.OnUpdate(); main.Fsm.SetState("isPlay");
+        Check(list.arrayList.Count == 4, "Character loading resets armor-capacity baseline and never spawns migration plates");
     }
 }

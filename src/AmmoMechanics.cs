@@ -320,6 +320,7 @@ namespace Gunplay.Ammo
             { "ammo_12gauge", "ammo_box_12gauge" }, { "ammo_20gauge", "ammo_box_20gauge" }, { "ammo_22caliber", "ammo_box_22" },
             { "ammo_3006", "ammo_box_3006" }, { "ammo_arrow", "ammo_arrow" },
             { "ammo_battery", "flashlight_batteries" }, { "ammo_grenade", "grenade" },
+            { "armorplate", "armorplate" },
         };
         private static readonly Dictionary<string, GameObject> _prefabs = new Dictionary<string, GameObject>();
 
@@ -340,7 +341,7 @@ namespace Gunplay.Ammo
             {
                 if (go == null || go.transform.parent != null) continue;
                 if (go.name != name && !go.name.StartsWith(name + "(Clone)", StringComparison.Ordinal)) continue;
-                string fsmName = caliber == "ammo_battery" ? "Batteries" : "Ammo";
+                string fsmName = caliber == "armorplate" ? "ID" : caliber == "ammo_battery" ? "Batteries" : "Ammo";
                 if (!go.GetComponents<PlayMakerFSM>().Any(f => f.FsmName == fsmName)) continue;
                 if (!go.scene.IsValid()) { if (go.name == name && asset == null) asset = go; }
                 else if (instance == null && go.name.StartsWith(name + "(Clone)", StringComparison.Ordinal)) instance = go;
@@ -375,8 +376,8 @@ namespace Gunplay.Ammo
             staging.SetActive(false);
             try
             {
-                // Grenades are individual items; boxes/arrows/batteries store an ammo count.
-                int itemCount = caliber == "ammo_grenade" ? rounds : 1;
+                // Grenades and armor plates are individual items; other boxes store a count.
+                int itemCount = caliber == "ammo_grenade" || caliber == "armorplate" ? rounds : 1;
                 for (int i = 0; i < itemCount; i++)
                 {
                     // Configure before activation so Randomize cannot overwrite the returned rounds.
@@ -386,10 +387,19 @@ namespace Gunplay.Ammo
                     var fsms = go.GetComponents<PlayMakerFSM>();
                     var rnd = fsms.FirstOrDefault(f => f.FsmName == "Randomize");
                     if (rnd != null) rnd.enabled = false;
-                    var ammo = fsms.FirstOrDefault(f => f.FsmName == (caliber == "ammo_battery" ? "Batteries" : "Ammo"));
-                    var v = ammo != null ? ammo.FsmVariables.GetFsmInt(caliber == "ammo_battery" ? "batteries" : "ammo") : null;
-                    if (v == null) throw new InvalidOperationException(go.name + " has no ammo count variable");
-                    v.Value = caliber == "ammo_grenade" ? 1 : rounds;
+                    if (caliber == "armorplate")
+                    {
+                        var quantityFsm = fsms.FirstOrDefault(f => f.FsmName == "Quantity");
+                        var quantity = quantityFsm == null ? null : quantityFsm.FsmVariables.GetFsmInt("Quantity");
+                        if (quantity != null) quantity.Value = 1;
+                    }
+                    else
+                    {
+                        var ammo = fsms.FirstOrDefault(f => f.FsmName == (caliber == "ammo_battery" ? "Batteries" : "Ammo"));
+                        var v = ammo != null ? ammo.FsmVariables.GetFsmInt(caliber == "ammo_battery" ? "batteries" : "ammo") : null;
+                        if (v == null) throw new InvalidOperationException(go.name + " has no ammo count variable");
+                        v.Value = caliber == "ammo_grenade" ? 1 : rounds;
+                    }
                     counter.Value += 1;
                     go.name = BoxName(caliber) + "(Clone)" + counter.Value;
                     list.arrayList.Add(go);
@@ -398,8 +408,16 @@ namespace Gunplay.Ammo
                 {
                     go.transform.SetParent(null, true);
                     go.SetActive(true);
+                    if (caliber == "armorplate")
+                    {
+                        go.layer = 9;
+                        var visibility = PerGunAmmo.Find(go, "Visibility"); if (visibility != null) visibility.SendEvent("Activate");
+                        var colliders = PerGunAmmo.Find(go, "Colliders"); if (colliders != null) colliders.SendEvent("CollidersActivate");
+                        foreach (var renderer in go.GetComponentsInChildren<Renderer>(true)) renderer.enabled = true;
+                        foreach (var collider in go.GetComponentsInChildren<Collider>(true)) { collider.enabled = true; collider.isTrigger = false; }
+                    }
                     var rb = go.GetComponent<Rigidbody>();
-                    if (rb != null) { rb.isKinematic = false; rb.velocity = fwd * 1.5f; }
+                    if (rb != null) { rb.isKinematic = false; if (caliber == "armorplate") rb.useGravity = true; rb.velocity = fwd * 1.5f; }
                 }
                 AmmoSettings.Log.LogInfo("Dropped " + rounds + " x " + caliber + " in " + created.Count + " save-registered item(s)");
                 return true;

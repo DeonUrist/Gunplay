@@ -14,7 +14,7 @@ namespace Gunplay.Ammo
     internal static class AmmoSettings
     {
         internal const string LegacyGuid = "com.denis.apocalypter.apocaunloader";
-        internal static ConfigEntry<bool> Enabled, DropBackpackOverflow;
+        internal static ConfigEntry<bool> Enabled, DropBackpackOverflow, DropArmorOverflow;
         internal static ConfigEntry<float> HoldSeconds, PhaseTimeout;
         internal static ConfigEntry<Key> FallbackKey;
         internal static ConfigEntry<bool> Verbose { get { return Plugin.VerboseLog; } }
@@ -38,6 +38,8 @@ namespace Gunplay.Ammo
                 new ConfigDescription("Key polled if the game's Reload input axis cannot be read."));
             DropBackpackOverflow = Bind(config, local, legacy, "DropBackpackOverflow", "DropBackpackOverflow", true,
                 new ConfigDescription("Drop excess ammo when switching to a smaller backpack or removing it. Failed drops retain the ammo and retry."));
+            DropArmorOverflow = config.Bind("Ammo", "DropArmorOverflow", true,
+                "Drop one armor plate for each full 50 points of excess armor when switching to lower-capacity body armor. Excess below 50 produces no plate. Failed drops retain armor and retry.");
             // The standalone Enabled switch also disabled overflow protection. Preserve that on migration.
             string oldEnabled;
             bool enabled;

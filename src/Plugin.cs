@@ -16,7 +16,7 @@ namespace Gunplay
     {
         public const string GUID = "com.denis.apocalypter.gunplay";
         public const string NAME = "Gunplay";
-        public const string VERSION = "1.2.0";
+        public const string VERSION = "1.3.0";
         internal static ManualLogSource Log;
         internal static string Dir;
         internal static ConfigEntry<Color> BoltColor;
@@ -140,14 +140,14 @@ namespace Gunplay
             TracerWidth = H("Tracers", "TracerWidth", 0.1f, new ConfigDescription("Tracer line width, m.", new AcceptableValueRange<float>(0.005f, 0.5f)));
             TracersDraw = Config.Bind("Gunplay", "Tracers", true, "Draw the glowing trail of every bullet in flight (crossbow bolts are always drawn).");
             VehicleDamage = Config.Bind("Gunplay", "VehicleDamage", true, "Bullets damage the vehicle parts they hit (20 bullet damage = 1 % condition; wheels much more). Off = the game's own rule.");
-            VerboseLog = Config.Bind("Debug", "VerboseLog", false, "Detailed logs for every part of the mod (hits, detection, movement, maps).");
             WheelDamageMultiplier = H("Tracers", "WheelDamageMultiplier", 5f, new ConfigDescription(
                 "Wheels (and tyres) lose this many times more condition per bullet - and per blow of your melee weapons - than other vehicle parts, so shooting or slashing the wheels is the way to stop a car.", new AcceptableValueRange<float>(0f, 100f)));
             WheelPopOff = Config.Bind("Gunplay", "WheelPopOff", true, "A wheel shot or slashed to 0 condition jumps off its car.");
             VehicleDamagePer1 = H("Tracers", "VehicleDamagePer1", 20f, new ConfigDescription("Bullet damage that takes 1 % off a vehicle part condition.", new AcceptableValueRange<float>(1f, 1000f)));
+            Ammo.AmmoSettings.Bind(Config);
+            VerboseLog = Config.Bind("Debug", "VerboseLog", false, "Detailed logs for every part of the mod (hits, detection, movement, maps).");
             HitLog = VerboseLog;
             LegacyConfig.Import(Config, Log, existingConfig);
-            Ammo.AmmoSettings.Bind(Config);
             _harmony = new Harmony(GUID);
             Patch(typeof(Micosmo.SensorToolkit.PlayMaker.SensorGetDetectionRayHit), "OnEnter", typeof(Tracers), nameof(Tracers.BeforeRayHit), true);
             Patch(typeof(Raycast), "OnEnter", typeof(Tracers), nameof(Tracers.BeforeRaycast), true);
@@ -179,7 +179,7 @@ namespace Gunplay
         private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
             EnsureRunner(); Tracers.OnSceneLoaded(); Bosses.OnSceneLoaded();
-            if (Ammo.AmmoSettings.Active) { Ammo.BackpackOverflow.Reset(); Ammo.PerGunAmmo.SceneChanged(); }
+            if (Ammo.AmmoSettings.Active) { Ammo.BackpackOverflow.Reset(); Ammo.ArmorOverflow.Reset(); Ammo.PerGunAmmo.SceneChanged(); }
         }
         private static void EnsureRunner()
         {

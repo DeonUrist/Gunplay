@@ -3,6 +3,7 @@
   <ItemGroup>
     <Compile Include="..\src\OverflowTransfer.cs" Link="OverflowTransfer.cs" />
     <Compile Include="..\src\MagazineLedger.cs" Link="MagazineLedger.cs" />
+    <Compile Include="..\src\ArmorOverflowTransfer.cs" Link="ArmorOverflowTransfer.cs" /><Compile Include="ArmorTests.cs" />
     <Compile Include="LogicTests.cs" /><Compile Include="MagazineTests.cs" />
   </ItemGroup>
 </Project>
