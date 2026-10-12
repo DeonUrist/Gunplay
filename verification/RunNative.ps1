@@ -1,4 +1,4 @@
-param([string]$GameDir = 'E:\SteamLibrary\steamapps\common\Apocalypter', [switch]$WithLegacy)
+param([string]$GameDir = 'E:\SteamLibrary\steamapps\common\Apocalypter', [switch]$WithLegacy, [string]$LegacyDll)
 $ErrorActionPreference = 'Stop'
 $taskGame = (Resolve-Path -LiteralPath $GameDir).Path
 $taskRepo = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
@@ -13,7 +13,14 @@ foreach ($file in @('Apocalypter.exe','UnityPlayer.dll','winhttp.dll','doorstop_
 Copy-Item -LiteralPath "$taskGame\BepInEx\core" -Destination "$taskRuntime\BepInEx" -Recurse -Force
 foreach ($dir in @('Apocalypter_Data','MonoBleedingEdge')) { if (!(Test-Path -LiteralPath "$taskRuntime\$dir")) { New-Item -ItemType Junction -Path "$taskRuntime\$dir" -Target "$taskGame\$dir" | Out-Null } }
 Copy-Item -LiteralPath "$taskRepo\bin\Release\Gunplay.dll", "$PSScriptRoot\bin\Release\net472\GunplayNativeVerifier.dll" -Destination "$taskRuntime\BepInEx\plugins" -Force
-if ($WithLegacy) { Copy-Item -LiteralPath "$taskGame\BepInEx\plugins\Apocaunloader.dll" -Destination "$taskRuntime\BepInEx\plugins" -Force }
+if ($WithLegacy) {
+    if (!$LegacyDll) {
+        $LegacyDll = @("$taskGame\BepInEx\plugins\Apocaunloader.dll", "$taskGame\BepInEx\cache\Apocasetter\disabled\com.denis.apocalypter.apocaunloader\plugins\Apocaunloader.dll") |
+            Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    }
+    if (!$LegacyDll) { throw 'No standalone Unloader found; pass -LegacyDll with a retained DLL path' }
+    Copy-Item -LiteralPath $LegacyDll -Destination "$taskRuntime\BepInEx\plugins\Apocaunloader.dll" -Force
+}
 @'
 [Logging.Console]
 Enabled = false
