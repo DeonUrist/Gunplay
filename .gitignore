@@ -4,3 +4,5 @@ obj/
 *.suo
 *.log
 extract.py
+verification/runtime*/
+verification/output/

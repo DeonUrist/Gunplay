@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0</TargetFramework><OutputType>Exe</OutputType><EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\src\OverflowTransfer.cs" Link="OverflowTransfer.cs" />
+    <Compile Include="..\src\MagazineLedger.cs" Link="MagazineLedger.cs" />
+    <Compile Include="LogicTests.cs" /><Compile Include="MagazineTests.cs" />
+  </ItemGroup>
+</Project>

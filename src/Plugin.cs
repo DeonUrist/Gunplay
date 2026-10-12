@@ -11,11 +11,12 @@ using UnityEngine.SceneManagement;
 namespace Gunplay
 {
     [BepInPlugin(GUID, NAME, VERSION)]
+    [BepInDependency(Ammo.AmmoSettings.LegacyGuid, BepInDependency.DependencyFlags.SoftDependency)]
     public sealed class Plugin : BaseUnityPlugin
     {
         public const string GUID = "com.denis.apocalypter.gunplay";
         public const string NAME = "Gunplay";
-        public const string VERSION = "1.1.0";
+        public const string VERSION = "1.2.0";
         internal static ManualLogSource Log;
         internal static string Dir;
         internal static ConfigEntry<Color> BoltColor;
@@ -146,6 +147,7 @@ namespace Gunplay
             VehicleDamagePer1 = H("Tracers", "VehicleDamagePer1", 20f, new ConfigDescription("Bullet damage that takes 1 % off a vehicle part condition.", new AcceptableValueRange<float>(1f, 1000f)));
             HitLog = VerboseLog;
             LegacyConfig.Import(Config, Log, existingConfig);
+            Ammo.AmmoSettings.Bind(Config);
             _harmony = new Harmony(GUID);
             Patch(typeof(Micosmo.SensorToolkit.PlayMaker.SensorGetDetectionRayHit), "OnEnter", typeof(Tracers), nameof(Tracers.BeforeRayHit), true);
             Patch(typeof(Raycast), "OnEnter", typeof(Tracers), nameof(Tracers.BeforeRaycast), true);
@@ -154,9 +156,10 @@ namespace Gunplay
             Patch(typeof(SetAudioClip), "OnEnter", typeof(Tracers), nameof(Tracers.AfterSetAudioClip), false);
             Patch(typeof(CreateObject), "OnEnter", typeof(Plugin), nameof(AfterCreateObject), false);
             Patch(typeof(TranslatePosition), "OnFixedUpdate", typeof(Tracers), nameof(Tracers.BeforeTranslatePosition), true);
+            if (Ammo.AmmoSettings.TakeOwnership()) _harmony.PatchAll(typeof(Ammo.AmmoRunner).Assembly);
             SceneManager.sceneLoaded += OnSceneLoaded;
             OnSceneLoaded(default(Scene), default(LoadSceneMode));
-            Log.LogInfo(NAME + " loaded; sibling integrations are optional.");
+            Log.LogInfo(NAME + " " + VERSION + " loaded; ammunition management integrated, sibling integrations optional.");
         }
 
         private void Patch(Type action, string method, Type owner, string handler, bool prefix)
@@ -173,13 +176,18 @@ namespace Gunplay
             if (prefab != null) Bosses.Spawned(__instance.storeObject.Value, prefab.name);
             Tracers.OrbSpawned(__instance, __instance.storeObject.Value);
         }
-        private static void OnSceneLoaded(Scene scene, LoadSceneMode mode) { EnsureRunner(); Tracers.OnSceneLoaded(); Bosses.OnSceneLoaded(); }
+        private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            EnsureRunner(); Tracers.OnSceneLoaded(); Bosses.OnSceneLoaded();
+            if (Ammo.AmmoSettings.Active) { Ammo.BackpackOverflow.Reset(); Ammo.PerGunAmmo.SceneChanged(); }
+        }
         private static void EnsureRunner()
         {
             if (_runner != null) return;
             _runner = new GameObject("Gunplay.Runner") { hideFlags = HideFlags.HideAndDontSave };
             UnityEngine.Object.DontDestroyOnLoad(_runner);
             _runner.AddComponent<Runner>();
+            if (Ammo.AmmoSettings.Active) _runner.AddComponent<Ammo.AmmoRunner>();
         }
         internal static void Verbose(string message) { if (VerboseLog != null && VerboseLog.Value) Log.LogInfo(message); }
     }
